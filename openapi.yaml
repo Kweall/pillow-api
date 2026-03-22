@@ -1,0 +1,526 @@
+openapi: 3.0.3
+info:
+  title: Pillow Real Estate API
+  description: API для управления недвижимостью и записи на просмотры
+  version: 1.0.0
+  contact:
+    name: Pillow Team
+    email: support@pillow.com
+
+servers:
+  - url: http://localhost:8080/api
+    description: Development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "user_1234567890_123456"
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        username:
+          type: string
+          example: "john_doe"
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Doe"
+        phone:
+          type: string
+          example: "+1234567890"
+        is_admin:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T12:00:00Z"
+    
+    UserCreateRequest:
+      type: object
+      required:
+        - email
+        - username
+        - password
+        - first_name
+        - last_name
+        - phone
+      properties:
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        password:
+          type: string
+          minLength: 6
+        first_name:
+          type: string
+        last_name:
+          type: string
+        phone:
+          type: string
+    
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    
+    LoginResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+        expires_in:
+          type: integer
+        user:
+          $ref: '#/components/schemas/User'
+    
+    Property:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [apartment, house, commercial, land]
+        status:
+          type: string
+          enum: [available, sold, rented, unavailable]
+        price:
+          type: number
+          format: double
+        city:
+          type: string
+        address:
+          type: string
+        area:
+          type: number
+          format: double
+        rooms:
+          type: integer
+        owner_id:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+    
+    PropertyCreateRequest:
+      type: object
+      required:
+        - title
+        - description
+        - type
+        - price
+        - city
+        - address
+        - area
+        - rooms
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [apartment, house, commercial, land]
+        price:
+          type: number
+        city:
+          type: string
+        address:
+          type: string
+        area:
+          type: number
+        rooms:
+          type: integer
+        images:
+          type: array
+          items:
+            type: string
+    
+    PropertySearchRequest:
+      type: object
+      properties:
+        city:
+          type: string
+        min_price:
+          type: number
+        max_price:
+          type: number
+        type:
+          type: string
+          enum: [apartment, house, commercial, land]
+        min_rooms:
+          type: integer
+        max_rooms:
+          type: integer
+        min_area:
+          type: number
+        max_area:
+          type: number
+        limit:
+          type: integer
+          default: 20
+        offset:
+          type: integer
+          default: 0
+    
+    Viewing:
+      type: object
+      properties:
+        id:
+          type: string
+        property_id:
+          type: string
+        user_id:
+          type: string
+        scheduled_time:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [scheduled, confirmed, cancelled, completed]
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    
+    ViewingCreateRequest:
+      type: object
+      required:
+        - property_id
+        - scheduled_time
+      properties:
+        property_id:
+          type: string
+        scheduled_time:
+          type: string
+          format: date-time
+        notes:
+          type: string
+    
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+paths:
+  /auth/register:
+    post:
+      summary: Register new user
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input or user already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /auth/login:
+    post:
+      summary: Login user
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /properties:
+    get:
+      summary: Search properties
+      tags: [Properties]
+      parameters:
+        - in: query
+          name: city
+          schema:
+            type: string
+        - in: query
+          name: min_price
+          schema:
+            type: number
+        - in: query
+          name: max_price
+          schema:
+            type: number
+        - in: query
+          name: type
+          schema:
+            type: string
+        - in: query
+          name: min_rooms
+          schema:
+            type: integer
+        - in: query
+          name: max_rooms
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of properties
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Property'
+    
+    post:
+      summary: Create new property
+      tags: [Properties]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyCreateRequest'
+      responses:
+        '201':
+          description: Property created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /properties/{id}:
+    get:
+      summary: Get property by ID
+      tags: [Properties]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Property details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        '404':
+          description: Property not found
+    
+    put:
+      summary: Update property
+      tags: [Properties]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyCreateRequest'
+      responses:
+        '200':
+          description: Property updated
+        '404':
+          description: Property not found
+    
+    delete:
+      summary: Delete property
+      tags: [Properties]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Property deleted
+        '404':
+          description: Property not found
+  
+  /viewings:
+    post:
+      summary: Schedule a viewing
+      tags: [Viewings]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ViewingCreateRequest'
+      responses:
+        '201':
+          description: Viewing scheduled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Viewing'
+        '400':
+          description: Invalid request
+    
+    get:
+      summary: Get user's viewings
+      tags: [Viewings]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [scheduled, confirmed, cancelled, completed]
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of viewings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Viewing'
+  
+  /viewings/{id}:
+    put:
+      summary: Update viewing
+      tags: [Viewings]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [confirmed, cancelled]
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Viewing updated
+        '404':
+          description: Viewing not found
+    
+    delete:
+      summary: Cancel viewing
+      tags: [Viewings]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Viewing cancelled
+        '404':
+          description: Viewing not found

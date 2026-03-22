@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  pillow-api:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config/config.yaml:/etc/pillow/config.yaml:ro
+    environment:
+      - USERVER_CONFIG=/etc/pillow/config.yaml
+    restart: unless-stopped

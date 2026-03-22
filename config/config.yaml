@@ -1,0 +1,60 @@
+components_manager:
+  coro_pool:
+    initial_size: 1000
+    max_size: 5000
+  task_processors:
+    main-task-processor:
+      worker_threads: 4
+      thread_name: main-worker
+    fs-task-processor:
+      worker_threads: 1
+      thread_name: fs-worker
+    monitor-task-processor:
+      worker_threads: 1
+      thread_name: monitor
+  default_task_processor: main-task-processor
+  
+  components:
+    server:
+      listener:
+        port: 8080
+        task_processor: main-task-processor
+      # middlewares: [] # удаляем эту строку
+    
+    logging:
+      fs-task-processor: fs-task-processor
+      loggers:
+        default:
+          file_path: '@stderr'
+          format: tskv
+          level: debug
+    
+    handler-ping:
+      path: /ping
+      method: GET
+      task_processor: main-task-processor
+    
+    auth-handler:
+      path: /api/auth/login
+      method: POST
+      task_processor: main-task-processor
+    
+    register-handler:
+      path: /api/auth/register
+      method: POST
+      task_processor: main-task-processor
+    
+    property-handler:
+      path: /api/properties
+      method: GET,POST
+      task_processor: main-task-processor
+    
+    viewing-handler:
+      path: /api/viewings
+      method: GET,POST
+      task_processor: main-task-processor
+    
+    user-handler:
+      path: /api/users
+      method: GET
+      task_processor: main-task-processor
