@@ -19,7 +19,6 @@ components_manager:
       listener:
         port: 8080
         task_processor: main-task-processor
-      # middlewares: [] # удаляем эту строку
     
     logging:
       fs-task-processor: fs-task-processor
@@ -44,9 +43,14 @@ components_manager:
       method: POST
       task_processor: main-task-processor
     
-    property-handler:
+    property-list-handler:
       path: /api/properties
       method: GET,POST
+      task_processor: main-task-processor
+    
+    property-item-handler:
+      path: /api/properties/{id}
+      method: GET,PUT,DELETE
       task_processor: main-task-processor
     
     viewing-handler:

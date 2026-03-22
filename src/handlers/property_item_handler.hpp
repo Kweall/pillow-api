@@ -5,9 +5,9 @@
 
 namespace pillow {
 
-class PropertyListHandler final : public userver::server::handlers::HttpHandlerBase {
+class PropertyItemHandler final : public userver::server::handlers::HttpHandlerBase {
 public:
-    PropertyListHandler(const userver::components::ComponentConfig& config,
+    PropertyItemHandler(const userver::components::ComponentConfig& config,
                         const userver::components::ComponentContext& context);
     
     std::string HandleRequestThrow(

@@ -2,6 +2,7 @@
 
 #include <userver/server/handlers/http_handler_base.hpp>
 #include <userver/components/component.hpp>
+#include <string>
 
 namespace pillow {
 
@@ -26,5 +27,11 @@ public:
         userver::server::request::RequestContext& context
     ) const override;
 };
+
+// Функция для валидации токена
+bool ValidateToken(const std::string& token, std::string& username);
+
+// Функция для извлечения токена из заголовка
+std::string ExtractTokenFromHeader(const userver::server::http::HttpRequest& request);
 
 } // namespace pillow

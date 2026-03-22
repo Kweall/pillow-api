@@ -25,7 +25,8 @@ find_package(userver REQUIRED COMPONENTS core)
 set(SOURCES
     src/main.cpp
     src/handlers/auth_handler.cpp
-    src/handlers/property_handler.cpp
+    src/handlers/property_list_handler.cpp
+    src/handlers/property_item_handler.cpp
     src/handlers/viewing_handler.cpp
     src/handlers/user_handler.cpp
 )
