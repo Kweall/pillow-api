@@ -1,10 +1,11 @@
 #include "handlers/property_item_handler.hpp"
-#include "handlers/auth_handler.hpp"
-#include "storage.hpp"
+#include "utils/auth_utils.hpp"
+#include "services/property_service.hpp"
 #include <userver/formats/json.hpp>
-#include <string>
 
 namespace pillow {
+
+static PropertyService property_service;
 
 PropertyItemHandler::PropertyItemHandler(const userver::components::ComponentConfig& config,
                                          const userver::components::ComponentContext& context)
@@ -25,8 +26,8 @@ std::string PropertyItemHandler::HandleRequestThrow(
     }
     
     if (method == userver::server::http::HttpMethod::kGet) {
-        auto it = properties.find(id);
-        if (it == properties.end()) {
+        auto prop = property_service.GetPropertyById(id);
+        if (!prop) {
             request.SetResponseStatus(userver::server::http::HttpStatus::kNotFound);
             userver::formats::json::ValueBuilder builder;
             builder["error"] = "Property not found";
@@ -34,14 +35,14 @@ std::string PropertyItemHandler::HandleRequestThrow(
         }
         
         userver::formats::json::ValueBuilder builder;
-        builder["id"] = it->second.id;
-        builder["title"] = it->second.title;
-        builder["description"] = it->second.description;
-        builder["price"] = it->second.price;
-        builder["city"] = it->second.city;
-        builder["rooms"] = it->second.rooms;
-        builder["owner_id"] = it->second.owner_id;
-        builder["created_at"] = it->second.created_at;
+        builder["id"] = prop->id;
+        builder["title"] = prop->title;
+        builder["description"] = prop->description;
+        builder["price"] = prop->price;
+        builder["city"] = prop->city;
+        builder["rooms"] = prop->rooms;
+        builder["owner_id"] = prop->owner_id;
+        builder["created_at"] = prop->created_at;
         
         request.SetResponseStatus(userver::server::http::HttpStatus::kOk);
         return userver::formats::json::ToString(builder.ExtractValue());
@@ -57,15 +58,17 @@ std::string PropertyItemHandler::HandleRequestThrow(
             return userver::formats::json::ToString(builder.ExtractValue());
         }
         
-        auto it = properties.find(id);
-        if (it == properties.end()) {
+        // Проверяем существование объекта
+        auto prop = property_service.GetPropertyById(id);
+        if (!prop) {
             request.SetResponseStatus(userver::server::http::HttpStatus::kNotFound);
             userver::formats::json::ValueBuilder builder;
             builder["error"] = "Property not found";
             return userver::formats::json::ToString(builder.ExtractValue());
         }
         
-        if (it->second.owner_id != username) {
+        // Проверяем права доступа
+        if (prop->owner_id != username) {
             request.SetResponseStatus(userver::server::http::HttpStatus::kForbidden);
             userver::formats::json::ValueBuilder builder;
             builder["error"] = "You don't have permission to update this property";
@@ -74,37 +77,34 @@ std::string PropertyItemHandler::HandleRequestThrow(
         
         try {
             auto body = userver::formats::json::FromString(request.RequestBody());
-            Property& prop = it->second;
             
-            if (body.HasMember("title")) {
-                std::string title = body["title"].As<std::string>();
-                if (!title.empty()) prop.title = title;
+            std::string title = body.HasMember("title") ? body["title"].As<std::string>() : "";
+            std::string description = body.HasMember("description") ? body["description"].As<std::string>() : "";
+            double price = body.HasMember("price") ? body["price"].As<double>() : 0;
+            std::string city = body.HasMember("city") ? body["city"].As<std::string>() : "";
+            int rooms = body.HasMember("rooms") ? body["rooms"].As<int>() : 0;
+            
+            // Вызываем метод обновления
+            bool updated = property_service.UpdateProperty(id, title, description, price, city, rooms, username);
+            
+            if (!updated) {
+                request.SetResponseStatus(userver::server::http::HttpStatus::kNotFound);
+                userver::formats::json::ValueBuilder builder;
+                builder["error"] = "Property not found";
+                return userver::formats::json::ToString(builder.ExtractValue());
             }
-            if (body.HasMember("description")) {
-                prop.description = body["description"].As<std::string>();
-            }
-            if (body.HasMember("price")) {
-                double price = body["price"].As<double>();
-                if (price > 0) prop.price = price;
-            }
-            if (body.HasMember("city")) {
-                std::string city = body["city"].As<std::string>();
-                if (!city.empty()) prop.city = city;
-            }
-            if (body.HasMember("rooms")) {
-                int rooms = body["rooms"].As<int>();
-                if (rooms > 0 && rooms <= 10) prop.rooms = rooms;
-            }
+            
+            auto updated_prop = property_service.GetPropertyById(id);
             
             userver::formats::json::ValueBuilder builder;
-            builder["id"] = prop.id;
-            builder["title"] = prop.title;
-            builder["description"] = prop.description;
-            builder["price"] = prop.price;
-            builder["city"] = prop.city;
-            builder["rooms"] = prop.rooms;
-            builder["owner_id"] = prop.owner_id;
-            builder["created_at"] = prop.created_at;
+            builder["id"] = updated_prop->id;
+            builder["title"] = updated_prop->title;
+            builder["description"] = updated_prop->description;
+            builder["price"] = updated_prop->price;
+            builder["city"] = updated_prop->city;
+            builder["rooms"] = updated_prop->rooms;
+            builder["owner_id"] = updated_prop->owner_id;
+            builder["created_at"] = updated_prop->created_at;
             builder["message"] = "Property updated successfully";
             
             request.SetResponseStatus(userver::server::http::HttpStatus::kOk);
@@ -113,7 +113,7 @@ std::string PropertyItemHandler::HandleRequestThrow(
         } catch (const std::exception& e) {
             request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
             userver::formats::json::ValueBuilder builder;
-            builder["error"] = "Invalid request";
+            builder["error"] = e.what();
             return userver::formats::json::ToString(builder.ExtractValue());
         }
         
@@ -128,22 +128,32 @@ std::string PropertyItemHandler::HandleRequestThrow(
             return userver::formats::json::ToString(builder.ExtractValue());
         }
         
-        auto it = properties.find(id);
-        if (it == properties.end()) {
+        // Проверяем существование объекта
+        auto prop = property_service.GetPropertyById(id);
+        if (!prop) {
             request.SetResponseStatus(userver::server::http::HttpStatus::kNotFound);
             userver::formats::json::ValueBuilder builder;
             builder["error"] = "Property not found";
             return userver::formats::json::ToString(builder.ExtractValue());
         }
         
-        if (it->second.owner_id != username) {
+        // Проверяем права доступа
+        if (prop->owner_id != username) {
             request.SetResponseStatus(userver::server::http::HttpStatus::kForbidden);
             userver::formats::json::ValueBuilder builder;
             builder["error"] = "You don't have permission to delete this property";
             return userver::formats::json::ToString(builder.ExtractValue());
         }
         
-        properties.erase(it);
+        // Вызываем метод удаления
+        bool deleted = property_service.DeleteProperty(id, username);
+        
+        if (!deleted) {
+            request.SetResponseStatus(userver::server::http::HttpStatus::kNotFound);
+            userver::formats::json::ValueBuilder builder;
+            builder["error"] = "Property not found";
+            return userver::formats::json::ToString(builder.ExtractValue());
+        }
         
         userver::formats::json::ValueBuilder builder;
         builder["message"] = "Property deleted successfully";

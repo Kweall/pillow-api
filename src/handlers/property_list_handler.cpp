@@ -1,22 +1,11 @@
 #include "handlers/property_handler.hpp"
-#include "handlers/auth_handler.hpp"
-#include "storage.hpp"
+#include "utils/auth_utils.hpp"
+#include "services/property_service.hpp"
 #include <userver/formats/json.hpp>
-#include <string>
-#include <chrono>
-#include <sstream>
-#include <iomanip>
-#include <ctime>
 
 namespace pillow {
 
-std::string GetCurrentTimeISO() {
-    auto now = std::chrono::system_clock::now();
-    std::time_t time_t = std::chrono::system_clock::to_time_t(now);
-    std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
-    return ss.str();
-}
+static PropertyService property_service;
 
 PropertyListHandler::PropertyListHandler(const userver::components::ComponentConfig& config,
                                          const userver::components::ComponentContext& context)
@@ -29,18 +18,19 @@ std::string PropertyListHandler::HandleRequestThrow(
     auto method = request.GetMethod();
     
     if (method == userver::server::http::HttpMethod::kGet) {
-        userver::formats::json::ValueBuilder builder;
-        builder = userver::formats::json::Type::kArray;
-        
         std::string city = request.GetArg("city");
         std::string min_price = request.GetArg("min_price");
         std::string max_price = request.GetArg("max_price");
         
-        for (const auto& [id, prop] : properties) {
-            if (!city.empty() && prop.city != city) continue;
-            if (!min_price.empty() && prop.price < std::stod(min_price)) continue;
-            if (!max_price.empty() && prop.price > std::stod(max_price)) continue;
-            
+        double min_p = min_price.empty() ? 0 : std::stod(min_price);
+        double max_p = max_price.empty() ? 0 : std::stod(max_price);
+        
+        auto properties = property_service.SearchProperties(city, min_p, max_p);
+        
+        userver::formats::json::ValueBuilder builder;
+        builder = userver::formats::json::Type::kArray;
+        
+        for (const auto& prop : properties) {
             userver::formats::json::ValueBuilder item;
             item["id"] = prop.id;
             item["title"] = prop.title;
@@ -75,48 +65,16 @@ std::string PropertyListHandler::HandleRequestThrow(
                 request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
                 userver::formats::json::ValueBuilder builder;
                 builder["error"] = "Missing required fields";
-                userver::formats::json::ValueBuilder required;
-                required = userver::formats::json::Type::kArray;
-                required.PushBack("title");
-                required.PushBack("price");
-                required.PushBack("city");
-                required.PushBack("rooms");
-                builder["required"] = required.ExtractValue();
                 return userver::formats::json::ToString(builder.ExtractValue());
             }
             
-            Property prop;
-            prop.id = std::to_string(next_id++);
-            prop.title = body["title"].As<std::string>();
-            prop.description = body.HasMember("description") ? body["description"].As<std::string>() : "";
-            prop.price = body["price"].As<double>();
-            prop.city = body["city"].As<std::string>();
-            prop.rooms = body["rooms"].As<int>();
-            prop.owner_id = username;
-            prop.created_at = GetCurrentTimeISO();
+            std::string title = body["title"].As<std::string>();
+            std::string description = body.HasMember("description") ? body["description"].As<std::string>() : "";
+            double price = body["price"].As<double>();
+            std::string city = body["city"].As<std::string>();
+            int rooms = body["rooms"].As<int>();
             
-            if (prop.title.empty()) {
-                request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
-                userver::formats::json::ValueBuilder builder;
-                builder["error"] = "Title cannot be empty";
-                return userver::formats::json::ToString(builder.ExtractValue());
-            }
-
-            if (prop.price <= 0) {
-                request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
-                userver::formats::json::ValueBuilder builder;
-                builder["error"] = "Price must be greater than 0";
-                return userver::formats::json::ToString(builder.ExtractValue());
-            }
-
-            if (prop.rooms < 1 || prop.rooms > 10) {
-                request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
-                userver::formats::json::ValueBuilder builder;
-                builder["error"] = "Rooms must be between 1 and 10";
-                return userver::formats::json::ToString(builder.ExtractValue());
-            }
-
-            properties[prop.id] = prop;
+            auto prop = property_service.CreateProperty(title, description, price, city, rooms, username);
             
             userver::formats::json::ValueBuilder builder;
             builder["id"] = prop.id;
@@ -135,7 +93,7 @@ std::string PropertyListHandler::HandleRequestThrow(
         } catch (const std::exception& e) {
             request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
             userver::formats::json::ValueBuilder builder;
-            builder["error"] = "Invalid request";
+            builder["error"] = e.what();
             return userver::formats::json::ToString(builder.ExtractValue());
         }
     }

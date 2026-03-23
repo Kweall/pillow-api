@@ -6,9 +6,11 @@
 namespace pillow {
 
 struct UserData {
+    std::string id;
     std::string username;
     std::string password_hash;
     std::string email;
+    std::string created_at;
 };
 
 struct Property {
@@ -22,10 +24,22 @@ struct Property {
     std::string created_at;
 };
 
-// Глобальное хранилище (объявление)
+struct Viewing {
+    std::string id;
+    std::string property_id;
+    std::string user_id;
+    std::string scheduled_time;
+    std::string status;
+    std::string notes;
+    std::string created_at;
+};
+
+// Глобальные хранилища
 extern std::unordered_map<std::string, UserData> users;
-extern std::unordered_map<std::string, std::string> tokens; // username -> token
+extern std::unordered_map<std::string, std::string> tokens;
 extern std::unordered_map<std::string, Property> properties;
-extern int next_id;
+extern std::unordered_map<std::string, Viewing> viewings;
+extern int next_property_id;
+extern int next_viewing_id;
 
 } // namespace pillow

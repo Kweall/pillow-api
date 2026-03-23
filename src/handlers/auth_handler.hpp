@@ -6,7 +6,7 @@
 
 namespace pillow {
 
-// Функции для работы с токенами
+// Извлечение токена
 std::string ExtractTokenFromHeader(const userver::server::http::HttpRequest& request);
 bool ValidateToken(const std::string& token, std::string& username);
 
