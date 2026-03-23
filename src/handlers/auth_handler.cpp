@@ -1,20 +1,17 @@
 #include "handlers/auth_handler.hpp"
+#include "storage.hpp"
 #include <userver/formats/json.hpp>
 #include <userver/formats/json/serialize.hpp>
-#include <unordered_map>
 #include <string>
 #include <regex>
 #include <chrono>
 #include <sstream>
 #include <iomanip>
+#include <iostream>
 
 namespace pillow {
 
-static std::unordered_map<std::string, std::string> users;
-static std::unordered_map<std::string, std::string> passwords;
-static std::unordered_map<std::string, std::string> tokens; // username -> token
-
-// Простая валидация email
+// Функция для валидации email
 bool IsValidEmail(const std::string& email) {
     const std::regex pattern(R"((\w+)(\.\w+)*@(\w+)(\.\w{2,})+)");
     return std::regex_match(email, pattern);
@@ -27,7 +24,7 @@ std::string GenerateToken(const std::string& username) {
         now.time_since_epoch()
     ).count();
     
-    // Простой формат токена: jwt_username_timestamp
+    // Используем символ, который не может быть в username
     return "jwt_" + username + "_" + std::to_string(timestamp);
 }
 
@@ -38,22 +35,25 @@ bool ValidateToken(const std::string& token, std::string& username) {
     }
     
     std::string token_content = token.substr(4);
-    auto underscore_pos = token_content.find('_');
+    // Ищем ПОСЛЕДНЕЕ подчеркивание, так как в username может быть подчеркивание
+    auto underscore_pos = token_content.rfind('_');
     if (underscore_pos == std::string::npos) {
         return false;
     }
     
     username = token_content.substr(0, underscore_pos);
     
-    // Проверяем, существует ли пользователь
     auto it = users.find(username);
     if (it == users.end()) {
         return false;
     }
     
-    // Проверяем, что токен соответствует пользователю
     auto token_it = tokens.find(username);
-    return (token_it != tokens.end() && token_it->second == token);
+    if (token_it == tokens.end()) {
+        return false;
+    }
+    
+    return token_it->second == token;
 }
 
 // Извлечение токена из заголовка
@@ -77,10 +77,6 @@ std::string AuthHandler::HandleRequestThrow(
         request.SetResponseStatus(userver::server::http::HttpStatus::kMethodNotAllowed);
         userver::formats::json::ValueBuilder builder;
         builder["error"] = "Method not allowed";
-        userver::formats::json::ValueBuilder allowed;
-        allowed = userver::formats::json::Type::kArray;
-        allowed.PushBack("POST");
-        builder["allowed_methods"] = allowed.ExtractValue();
         return userver::formats::json::ToString(builder.ExtractValue());
     }
     
@@ -91,29 +87,25 @@ std::string AuthHandler::HandleRequestThrow(
             request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
             userver::formats::json::ValueBuilder builder;
             builder["error"] = "Missing required fields";
-            userver::formats::json::ValueBuilder required;
-            required = userver::formats::json::Type::kArray;
-            required.PushBack("username");
-            required.PushBack("password");
-            builder["required"] = required.ExtractValue();
             return userver::formats::json::ToString(builder.ExtractValue());
         }
         
         std::string username = body["username"].As<std::string>();
         std::string password = body["password"].As<std::string>();
         
-        if (username.empty() || password.empty()) {
-            request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
-            userver::formats::json::ValueBuilder builder;
-            builder["error"] = "Username and password cannot be empty";
-            return userver::formats::json::ToString(builder.ExtractValue());
-        }
+        std::cout << "\n=== Login Attempt ===" << std::endl;
+        std::cout << "Username: " << username << std::endl;
+        std::cout << "Users map size: " << users.size() << std::endl;
         
-        auto it = passwords.find(username);
-        if (it != passwords.end() && it->second == password) {
-            // Генерируем новый токен
+        auto it = users.find(username);
+        if (it != users.end() && it->second.password_hash == password) {
             std::string token = GenerateToken(username);
             tokens[username] = token;
+            
+            std::cout << "Login successful for: " << username << std::endl;
+            std::cout << "Generated token: " << token << std::endl;
+            std::cout << "Tokens map size: " << tokens.size() << std::endl;
+            std::cout << "=====================\n" << std::endl;
             
             userver::formats::json::ValueBuilder builder;
             builder["access_token"] = token;
@@ -126,6 +118,9 @@ std::string AuthHandler::HandleRequestThrow(
             return userver::formats::json::ToString(builder.ExtractValue());
         }
         
+        std::cout << "Login failed for: " << username << std::endl;
+        std::cout << "=====================\n" << std::endl;
+        
         request.SetResponseStatus(userver::server::http::HttpStatus::kUnauthorized);
         userver::formats::json::ValueBuilder builder;
         builder["error"] = "Invalid credentials";
@@ -135,7 +130,6 @@ std::string AuthHandler::HandleRequestThrow(
         request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
         userver::formats::json::ValueBuilder builder;
         builder["error"] = "Invalid JSON format";
-        builder["details"] = e.what();
         return userver::formats::json::ToString(builder.ExtractValue());
     }
 }
@@ -152,10 +146,6 @@ std::string RegisterHandler::HandleRequestThrow(
         request.SetResponseStatus(userver::server::http::HttpStatus::kMethodNotAllowed);
         userver::formats::json::ValueBuilder builder;
         builder["error"] = "Method not allowed";
-        userver::formats::json::ValueBuilder allowed;
-        allowed = userver::formats::json::Type::kArray;
-        allowed.PushBack("POST");
-        builder["allowed_methods"] = allowed.ExtractValue();
         return userver::formats::json::ToString(builder.ExtractValue());
     }
     
@@ -166,12 +156,6 @@ std::string RegisterHandler::HandleRequestThrow(
             request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
             userver::formats::json::ValueBuilder builder;
             builder["error"] = "Missing required fields";
-            userver::formats::json::ValueBuilder required;
-            required = userver::formats::json::Type::kArray;
-            required.PushBack("username");
-            required.PushBack("password");
-            required.PushBack("email");
-            builder["required"] = required.ExtractValue();
             return userver::formats::json::ToString(builder.ExtractValue());
         }
         
@@ -207,8 +191,16 @@ std::string RegisterHandler::HandleRequestThrow(
             return userver::formats::json::ToString(builder.ExtractValue());
         }
         
-        users[username] = username;
-        passwords[username] = password;
+        UserData user;
+        user.username = username;
+        user.password_hash = password;
+        user.email = email;
+        users[username] = user;
+        
+        std::cout << "\n=== Registration ===" << std::endl;
+        std::cout << "Registered user: " << username << std::endl;
+        std::cout << "Total users: " << users.size() << std::endl;
+        std::cout << "===================\n" << std::endl;
         
         userver::formats::json::ValueBuilder builder;
         builder["id"] = username;
@@ -223,7 +215,6 @@ std::string RegisterHandler::HandleRequestThrow(
         request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
         userver::formats::json::ValueBuilder builder;
         builder["error"] = "Invalid JSON format";
-        builder["details"] = e.what();
         return userver::formats::json::ToString(builder.ExtractValue());
     }
 }

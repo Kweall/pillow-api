@@ -1,7 +1,7 @@
 #include "handlers/property_handler.hpp"
 #include "handlers/auth_handler.hpp"
+#include "storage.hpp"
 #include <userver/formats/json.hpp>
-#include <unordered_map>
 #include <string>
 #include <chrono>
 #include <sstream>
@@ -9,21 +9,6 @@
 #include <ctime>
 
 namespace pillow {
-
-// Структура и хранилище должны быть доступны из property_item_handler
-struct Property {
-    std::string id;
-    std::string title;
-    std::string description;
-    double price;
-    std::string city;
-    int rooms;
-    std::string owner_id;
-    std::string created_at;
-};
-
-std::unordered_map<std::string, Property> properties;
-static int next_id = 1;
 
 std::string GetCurrentTimeISO() {
     auto now = std::chrono::system_clock::now();
@@ -44,7 +29,6 @@ std::string PropertyListHandler::HandleRequestThrow(
     auto method = request.GetMethod();
     
     if (method == userver::server::http::HttpMethod::kGet) {
-        // GET /api/properties - список
         userver::formats::json::ValueBuilder builder;
         builder = userver::formats::json::Type::kArray;
         
@@ -73,7 +57,6 @@ std::string PropertyListHandler::HandleRequestThrow(
         return userver::formats::json::ToString(builder.ExtractValue());
         
     } else if (method == userver::server::http::HttpMethod::kPost) {
-        // POST /api/properties - создание
         std::string token = ExtractTokenFromHeader(request);
         std::string username;
         
@@ -92,6 +75,13 @@ std::string PropertyListHandler::HandleRequestThrow(
                 request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
                 userver::formats::json::ValueBuilder builder;
                 builder["error"] = "Missing required fields";
+                userver::formats::json::ValueBuilder required;
+                required = userver::formats::json::Type::kArray;
+                required.PushBack("title");
+                required.PushBack("price");
+                required.PushBack("city");
+                required.PushBack("rooms");
+                builder["required"] = required.ExtractValue();
                 return userver::formats::json::ToString(builder.ExtractValue());
             }
             
@@ -105,13 +95,27 @@ std::string PropertyListHandler::HandleRequestThrow(
             prop.owner_id = username;
             prop.created_at = GetCurrentTimeISO();
             
-            if (prop.title.empty() || prop.price <= 0 || prop.rooms <= 0 || prop.rooms > 10) {
+            if (prop.title.empty()) {
                 request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
                 userver::formats::json::ValueBuilder builder;
-                builder["error"] = "Invalid property data";
+                builder["error"] = "Title cannot be empty";
                 return userver::formats::json::ToString(builder.ExtractValue());
             }
-            
+
+            if (prop.price <= 0) {
+                request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
+                userver::formats::json::ValueBuilder builder;
+                builder["error"] = "Price must be greater than 0";
+                return userver::formats::json::ToString(builder.ExtractValue());
+            }
+
+            if (prop.rooms < 1 || prop.rooms > 10) {
+                request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
+                userver::formats::json::ValueBuilder builder;
+                builder["error"] = "Rooms must be between 1 and 10";
+                return userver::formats::json::ToString(builder.ExtractValue());
+            }
+
             properties[prop.id] = prop;
             
             userver::formats::json::ValueBuilder builder;

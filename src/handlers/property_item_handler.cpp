@@ -1,25 +1,10 @@
 #include "handlers/property_item_handler.hpp"
 #include "handlers/auth_handler.hpp"
+#include "storage.hpp"
 #include <userver/formats/json.hpp>
-#include <unordered_map>
 #include <string>
 
 namespace pillow {
-
-// Используем ту же структуру и хранилище что и в property_handler
-struct Property {
-    std::string id;
-    std::string title;
-    std::string description;
-    double price;
-    std::string city;
-    int rooms;
-    std::string owner_id;
-    std::string created_at;
-};
-
-// Внешняя ссылка на хранилище (определено в property_handler.cpp)
-extern std::unordered_map<std::string, Property> properties;
 
 PropertyItemHandler::PropertyItemHandler(const userver::components::ComponentConfig& config,
                                          const userver::components::ComponentContext& context)
@@ -40,7 +25,6 @@ std::string PropertyItemHandler::HandleRequestThrow(
     }
     
     if (method == userver::server::http::HttpMethod::kGet) {
-        // GET /api/properties/{id}
         auto it = properties.find(id);
         if (it == properties.end()) {
             request.SetResponseStatus(userver::server::http::HttpStatus::kNotFound);
@@ -63,7 +47,6 @@ std::string PropertyItemHandler::HandleRequestThrow(
         return userver::formats::json::ToString(builder.ExtractValue());
         
     } else if (method == userver::server::http::HttpMethod::kPut) {
-        // PUT /api/properties/{id}
         std::string token = ExtractTokenFromHeader(request);
         std::string username;
         
@@ -131,12 +114,10 @@ std::string PropertyItemHandler::HandleRequestThrow(
             request.SetResponseStatus(userver::server::http::HttpStatus::kBadRequest);
             userver::formats::json::ValueBuilder builder;
             builder["error"] = "Invalid request";
-            builder["details"] = e.what();
             return userver::formats::json::ToString(builder.ExtractValue());
         }
         
     } else if (method == userver::server::http::HttpMethod::kDelete) {
-        // DELETE /api/properties/{id}
         std::string token = ExtractTokenFromHeader(request);
         std::string username;
         
